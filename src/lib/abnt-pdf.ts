@@ -236,7 +236,7 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     try {
-      pdfMake.createPdf(docDefinition).getBlob((blob: Blob) => {
+      (pdfMake.createPdf(docDefinition) as any).getBlob((blob: Blob) => {
         try {
           const url = URL.createObjectURL(blob);
           // Tenta abrir em nova aba (funciona dentro de iframes sandbox do preview)
