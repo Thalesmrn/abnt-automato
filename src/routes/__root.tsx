@@ -33,11 +33,15 @@ export const Route = createRootRoute({
       { title: "TCCFlow — Gere seu TCC completo em normas ABNT" },
       { name: "description", content: "Plataforma que gera TCCs completos com IA, formatados conforme as normas da ABNT. Apenas insira o tema." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "TCCFlow — TCC completo em ABNT com IA" },
-      { property: "og:description", content: "Crie seu TCC completo em minutos com IA, formatado em normas ABNT." },
+      { property: "og:title", content: "TCCFlow — Gere seu TCC completo em normas ABNT" },
+      { property: "og:description", content: "Plataforma que gera TCCs completos com IA, formatados conforme as normas da ABNT. Apenas insira o tema." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "TCCFlow — Gere seu TCC completo em normas ABNT" },
+      { name: "twitter:description", content: "Plataforma que gera TCCs completos com IA, formatados conforme as normas da ABNT. Apenas insira o tema." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/681d6714-4441-45a5-99f9-7939909597db" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/681d6714-4441-45a5-99f9-7939909597db" },
     ],
     links: [
       {
