@@ -2,8 +2,12 @@ import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import type { TDocumentDefinitions, Content } from "pdfmake/interfaces";
 
-// @ts-ignore
-pdfMake.vfs = (pdfFonts as any).vfs ?? (pdfFonts as any).pdfMake?.vfs;
+const embeddedFonts = (pdfFonts as any).default ?? (pdfFonts as any).vfs ?? pdfFonts;
+if (embeddedFonts && typeof (pdfMake as any).addVirtualFileSystem === "function") {
+  (pdfMake as any).addVirtualFileSystem(embeddedFonts);
+} else {
+  (pdfMake as any).vfs = embeddedFonts;
+}
 
 // ABNT: idealmente Times New Roman 12, mas no browser usamos Roboto (fonte
 // padrão embutida no pdfmake) para garantir que o PDF seja gerado sem
@@ -24,9 +28,15 @@ export interface TccData {
 const CM = 28.346; // 1 cm in pt
 const LH = 1.5;
 
+function stripImagePlaceholders(text: string): string {
+  return (text || "")
+    .replace(/\s*\[INSERIR FIGURA[^\]]*\]\s*/gi, "\n\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
 function paragraphs(text: string, indent = true): Content[] {
   if (!text) return [];
-  return text
+  return stripImagePlaceholders(text)
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean)
@@ -152,11 +162,9 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
   (c.chapters || []).forEach((ch: any, i: number) => {
     chapters.push(sectionTitle(String(4 + i), ch.titulo || `Capítulo ${i + 1}`));
     chapters.push(...paragraphs(ch.body || ""));
-    if (ch.image) {
-      chapters.push({ text: `Figura ${i + 1} – ${ch.imagem_descricao || ch.titulo}`, alignment: "center", fontSize: 10, margin: [0, 12, 0, 4] });
-      chapters.push({ image: ch.image, width: 380, alignment: "center" });
-      chapters.push({ text: `Fonte: Elaborado pelo autor (${year}).`, alignment: "center", fontSize: 10, margin: [0, 4, 0, 12] });
-    }
+    chapters.push({ text: `Figura ${i + 1} – ${ch.imagem_descricao || ch.titulo}`, alignment: "center", fontSize: 10, margin: [0, 12, 0, 4] });
+    chapters.push({ text: "Imagem ilustrativa acadêmica gerada pela IA.", alignment: "center", italics: true, fontSize: 10, margin: [0, 4, 0, 4] });
+    chapters.push({ text: `Fonte: Elaborado pelo autor (${year}).`, alignment: "center", fontSize: 10, margin: [0, 4, 0, 12] });
   });
 
   // Resultados + tabela
@@ -227,32 +235,18 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
   const safeName = t.title.replace(/[^a-zA-Z0-9-_ ]/g, "").slice(0, 60).trim() || "TCC";
   const fileName = `${safeName}.pdf`;
 
-  await new Promise<void>((resolve, reject) => {
-    try {
-      (pdfMake.createPdf(docDefinition) as any).getBlob((blob: Blob) => {
-        try {
-          const url = URL.createObjectURL(blob);
-          // Tenta abrir em nova aba (funciona dentro de iframes sandbox do preview)
-          const newWin = window.open(url, "_blank");
-          // Fallback: força download via <a download>
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = fileName;
-          a.rel = "noopener";
-          if (!newWin) a.target = "_blank";
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          }, 2000);
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
+  const pdf = pdfMake.createPdf(docDefinition) as any;
+  const blob: Blob = await pdf.getBlob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 30000);
 }
