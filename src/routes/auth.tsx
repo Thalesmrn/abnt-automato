@@ -21,6 +21,7 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState("signin");
 
   useEffect(() => {
     if (!loading && user) navigate({ to: "/dashboard" });
@@ -46,10 +47,16 @@ function AuthPage() {
         data: { full_name: name },
       },
     });
+    if (error) {
+      setBusy(false);
+      return toast.error(error.message);
+    }
+    // Evita que o Supabase mantenha o usuário logado automaticamente após o cadastro
+    await supabase.auth.signOut();
     setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Conta criada com sucesso!");
-    navigate({ to: "/dashboard" });
+    setPassword("");
+    setTab("signin");
+    toast.success("Conta criada! Faça login para continuar.");
   };
 
   return (
@@ -66,7 +73,7 @@ function AuthPage() {
         <div className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl">
           <h1 className="text-2xl font-bold text-center mb-1">Bem-vindo</h1>
           <p className="text-sm text-muted-foreground text-center mb-6">Acesse sua conta ou crie uma nova</p>
-          <Tabs defaultValue="signin">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="grid grid-cols-2 w-full">
               <TabsTrigger value="signin">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Cadastrar</TabsTrigger>
