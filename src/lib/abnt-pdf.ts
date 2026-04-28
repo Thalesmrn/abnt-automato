@@ -232,5 +232,34 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
   };
 
   const safeName = t.title.replace(/[^a-zA-Z0-9-_ ]/g, "").slice(0, 60).trim() || "TCC";
-  pdfMake.createPdf(docDefinition).download(`${safeName}.pdf`);
+  const fileName = `${safeName}.pdf`;
+
+  await new Promise<void>((resolve, reject) => {
+    try {
+      (pdfMake.createPdf(docDefinition) as any).getBlob((blob: Blob) => {
+        try {
+          const url = URL.createObjectURL(blob);
+          // Tenta abrir em nova aba (funciona dentro de iframes sandbox do preview)
+          const newWin = window.open(url, "_blank");
+          // Fallback: força download via <a download>
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fileName;
+          a.rel = "noopener";
+          if (!newWin) a.target = "_blank";
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 2000);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
