@@ -1,1 +1,4 @@
 project_id = "wjgdlyyagdrguztkwwyc"
+
+[functions.generate-tcc]
+verify_jwt = true
