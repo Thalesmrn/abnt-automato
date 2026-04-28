@@ -113,10 +113,30 @@ Inclua exatamente ${cfg.chapters} capítulos de desenvolvimento.` },
       })),
       { key: "resultados", prompt: `Escreva a seção RESULTADOS E DISCUSSÃO de um TCC sobre "${tcc.theme}". Apresente resultados plausíveis (com números, percentuais, exemplos), discuta-os à luz da literatura citada, com citações (SOBRENOME, ANO). Mencione a Tabela 1 com dados.` },
       { key: "conclusao", prompt: `Escreva as CONSIDERAÇÕES FINAIS de um TCC sobre "${tcc.theme}". Retome o objetivo (${outline.objetivo_geral}), sintetize os principais achados, aponte limitações e sugira pesquisas futuras. ~${Math.round(cfg.wordsPerSection * 0.6)} palavras.` },
-      { key: "referencias", prompt: `Liste 15 referências bibliográficas no formato ABNT (NBR 6023) sobre "${tcc.theme}". Use livros, artigos científicos e teses plausíveis (autores brasileiros e estrangeiros). Formato exato:
-SOBRENOME, Nome. Título da obra em itálico. Edição. Cidade: Editora, Ano.
+      { key: "referencias", prompt: `Liste 15 referências bibliográficas REAIS e VERIFICÁVEIS no formato ABNT (NBR 6023) sobre "${tcc.theme}".
+
+REGRAS OBRIGATÓRIAS — não invente nada:
+1. Use APENAS obras que você tem certeza de que existem (livros clássicos da área, autores reconhecidos, artigos amplamente citados, normas ABNT, dissertações/teses já publicadas, manuais oficiais).
+2. Priorize autores brasileiros consagrados da área e clássicos internacionais traduzidos.
+3. Inclua de forma equilibrada:
+   - Livros de metodologia científica reais (ex.: Antonio Carlos Gil — "Como Elaborar Projetos de Pesquisa", Atlas; Marina de Andrade Marconi e Eva Maria Lakatos — "Fundamentos de Metodologia Científica", Atlas; Pedro Demo; Minayo).
+   - Livros e artigos clássicos específicos do tema "${tcc.theme}" — apenas autores e títulos que você conhece de verdade.
+   - Quando incluir artigo de periódico, use revistas brasileiras reais (ex.: SciELO, Revista Brasileira de..., Cadernos de Saúde Pública, RAE, RAUSP, Educação & Sociedade) ou periódicos internacionais conhecidos.
+   - Quando incluir documento oficial, use órgãos reais (IBGE, MEC, Ministério da Saúde, OMS, ABNT — NBR 6023:2018, NBR 14724:2011, NBR 10520:2023).
+
+4. NÃO invente:
+   - títulos de livros que não existam,
+   - artigos com volume/número/páginas fictícios,
+   - DOIs ou URLs. NÃO inclua links/URLs/DOIs nas referências — deixe apenas a referência textual.
+   - editoras inexistentes ou cidades erradas para a editora.
+
+5. Se tiver dúvida sobre a existência exata de uma obra, prefira não incluí-la e use outra que você conheça com segurança.
+
+Formato exato (uma referência por linha, sem numeração, sem marcadores, sem markdown, ordenadas alfabeticamente pelo sobrenome):
+SOBRENOME, Nome. Título da obra. Edição. Cidade: Editora, Ano.
 SOBRENOME, Nome. Título do artigo. Nome da Revista, v. X, n. Y, p. ZZ-ZZ, Ano.
-Uma referência por linha, ordenadas alfabeticamente. Sem markdown, sem numeração.` },
+
+Retorne SOMENTE as 15 linhas de referências.` },
     ];
 
     const results = await Promise.all(
