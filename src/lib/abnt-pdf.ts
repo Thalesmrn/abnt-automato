@@ -5,16 +5,9 @@ import type { TDocumentDefinitions, Content } from "pdfmake/interfaces";
 // @ts-ignore
 pdfMake.vfs = (pdfFonts as any).vfs ?? (pdfFonts as any).pdfMake?.vfs;
 
-// ABNT: Times New Roman 12, espaço 1.5, margens 3/2/3/2cm, recuo 1.25cm
-// pdfmake default font is Roboto; we use Times-like serif via built-in Times
-pdfMake.fonts = {
-  Times: {
-    normal: "Times-Roman",
-    bold: "Times-Bold",
-    italics: "Times-Italic",
-    bolditalics: "Times-BoldItalic",
-  },
-};
+// ABNT: idealmente Times New Roman 12, mas no browser usamos Roboto (fonte
+// padrão embutida no pdfmake) para garantir que o PDF seja gerado sem
+// depender de arquivos .afm externos.
 
 export interface TccData {
   title: string;
@@ -209,7 +202,7 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [CM * 3, CM * 3, CM * 2, CM * 2],
-    defaultStyle: { font: "Times", fontSize: 12, lineHeight: LH },
+    defaultStyle: { font: "Roboto", fontSize: 12, lineHeight: LH },
     content: [
       ...cover,
       ...folha,
