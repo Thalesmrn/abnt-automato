@@ -1,10 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { GraduationCap, LogOut } from "lucide-react";
+import { GraduationCap, LogOut, Shield, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 export function Header() {
   const { user, signOut } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const navigate = useNavigate();
   return (
     <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-40">
@@ -18,6 +20,14 @@ export function Header() {
         <div className="flex items-center gap-3">
           {user && (
             <>
+              {isAdmin && (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/admin"><Shield className="h-4 w-4 mr-1" /> Admin</Link>
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/account"><UserCog className="h-4 w-4 mr-1" /> Conta</Link>
+              </Button>
               <span className="hidden sm:inline text-sm text-muted-foreground">{user.email}</span>
               <Button variant="ghost" size="icon" onClick={async () => { await signOut(); navigate({ to: "/" }); }}>
                 <LogOut className="h-4 w-4" />
