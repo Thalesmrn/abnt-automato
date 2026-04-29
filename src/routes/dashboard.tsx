@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Plus, FileText, Loader2, AlertCircle, Trash2, Download } from "lucide-react";
+import { Plus, FileText, Loader2, AlertCircle, Trash2, Download, FileSearch } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -64,9 +64,14 @@ function Dashboard() {
             <h1 className="text-3xl font-bold">Meus TCCs</h1>
             <p className="text-muted-foreground mt-1">Gere, acompanhe e baixe seus trabalhos</p>
           </div>
-          <Button onClick={() => navigate({ to: "/new" })} size="lg" style={{ background: "var(--gradient-hero)" }}>
-            <Plus className="mr-2 h-4 w-4" /> Novo TCC
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={() => navigate({ to: "/review" })} size="lg" variant="outline">
+              <FileSearch className="mr-2 h-4 w-4" /> Revisar TCC existente
+            </Button>
+            <Button onClick={() => navigate({ to: "/new" })} size="lg" style={{ background: "var(--gradient-hero)" }}>
+              <Plus className="mr-2 h-4 w-4" /> Novo TCC
+            </Button>
+          </div>
         </div>
 
         {fetching ? (

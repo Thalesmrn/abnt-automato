@@ -11,3 +11,6 @@ verify_jwt = true
 
 [functions.edit-tcc-section]
 verify_jwt = true
+
+[functions.review-tcc]
+verify_jwt = true
