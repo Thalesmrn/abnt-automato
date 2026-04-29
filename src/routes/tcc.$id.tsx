@@ -5,7 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, Download, ArrowLeft, AlertCircle, RefreshCw } from "lucide-react";
+import { Loader2, Download, ArrowLeft, AlertCircle, RefreshCw, Pencil, Sparkles, X, Save } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { generateAbntPdf } from "@/lib/abnt-pdf";
 
@@ -21,6 +22,11 @@ function TccView() {
   const [tcc, setTcc] = useState<any>(null);
   const [fetching, setFetching] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [editing, setEditing] = useState<{ kind: "section" | "chapter"; key: string; index?: number } | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editMode, setEditMode] = useState<"manual" | "ai">("manual");
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => { if (!loading && !user) navigate({ to: "/auth" }); }, [user, loading, navigate]);
 
@@ -63,6 +69,51 @@ function TccView() {
   if (!tcc) return <div className="min-h-screen flex items-center justify-center">TCC não encontrado</div>;
 
   const c = tcc.content || {};
+
+  const openEditor = (kind: "section" | "chapter", key: string, index?: number) => {
+    const original = kind === "chapter" ? (c.chapters?.[index!]?.body ?? "") : (c.sections?.[key] ?? "");
+    setEditing({ kind, key, index });
+    setEditText(original);
+    setEditMode("manual");
+    setAiInstruction("");
+  };
+
+  const closeEditor = () => { setEditing(null); setEditText(""); setAiInstruction(""); };
+
+  const saveManual = async () => {
+    if (!editing) return;
+    setSavingEdit(true);
+    const newContent = JSON.parse(JSON.stringify(c));
+    if (editing.kind === "chapter" && typeof editing.index === "number") {
+      if (!newContent.chapters) newContent.chapters = [];
+      newContent.chapters[editing.index] = { ...(newContent.chapters[editing.index] ?? {}), body: editText };
+    } else {
+      if (!newContent.sections) newContent.sections = {};
+      newContent.sections[editing.key] = editText;
+    }
+    const { error } = await supabase.from("tccs").update({ content: newContent, updated_at: new Date().toISOString() }).eq("id", id);
+    setSavingEdit(false);
+    if (error) return toast.error(error.message);
+    setTcc({ ...tcc, content: newContent });
+    toast.success("Seção atualizada!");
+    closeEditor();
+  };
+
+  const askAI = async () => {
+    if (!editing || !aiInstruction.trim()) return toast.error("Descreva o que deseja alterar.");
+    setSavingEdit(true);
+    const sectionKey = editing.kind === "chapter" ? "chapter" : editing.key;
+    const { data, error } = await supabase.functions.invoke("edit-tcc-section", {
+      body: { tccId: id, sectionKey, instruction: aiInstruction, chapterIndex: editing.index },
+    });
+    setSavingEdit(false);
+    if (error || (data as any)?.error) return toast.error(error?.message || (data as any)?.error);
+    // Recarrega
+    const { data: fresh } = await supabase.from("tccs").select("*").eq("id", id).single();
+    if (fresh) setTcc(fresh);
+    toast.success("Seção reescrita pela IA!");
+    closeEditor();
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -116,14 +167,17 @@ function TccView() {
 
         {tcc.status === "done" && c.sections && (
           <div className="space-y-8">
-            <Section title="Resumo" body={c.sections.resumo} keywords={c.outline?.resumo_keywords} />
-            <Section title="Abstract" body={c.sections.abstract} keywords={c.outline?.resumo_keywords} keywordLabel="Keywords" italic />
-            <Section title="1 Introdução" body={c.sections.introducao} />
-            <Section title="2 Referencial Teórico" body={c.sections.referencial} />
-            <Section title="3 Metodologia" body={c.sections.metodologia} />
+            <Section title="Resumo" body={c.sections.resumo} keywords={c.outline?.resumo_keywords} onEdit={() => openEditor("section", "resumo")} />
+            <Section title="Abstract" body={c.sections.abstract} keywords={c.outline?.resumo_keywords} keywordLabel="Keywords" italic onEdit={() => openEditor("section", "abstract")} />
+            <Section title="1 Introdução" body={c.sections.introducao} onEdit={() => openEditor("section", "introducao")} />
+            <Section title="2 Referencial Teórico" body={c.sections.referencial} onEdit={() => openEditor("section", "referencial")} />
+            <Section title="3 Metodologia" body={c.sections.metodologia} onEdit={() => openEditor("section", "metodologia")} />
             {(c.chapters || []).map((ch: any, i: number) => (
               <Card key={i} className="p-6">
-                <h2 className="text-xl font-bold mb-4">{4 + i} {ch.titulo}</h2>
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <h2 className="text-xl font-bold">{4 + i} {ch.titulo}</h2>
+                  <Button size="sm" variant="ghost" onClick={() => openEditor("chapter", "chapter", i)}><Pencil className="h-3.5 w-3.5 mr-1" /> Editar</Button>
+                </div>
                 <Prose text={ch.body} />
                 {ch.image && (
                   <figure className="mt-6 text-center">
@@ -135,7 +189,10 @@ function TccView() {
               </Card>
             ))}
             <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4">{4 + (c.chapters?.length || 0)} Resultados e Discussão</h2>
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h2 className="text-xl font-bold">{4 + (c.chapters?.length || 0)} Resultados e Discussão</h2>
+                <Button size="sm" variant="ghost" onClick={() => openEditor("section", "resultados")}><Pencil className="h-3.5 w-3.5 mr-1" /> Editar</Button>
+              </div>
               <Prose text={c.sections.resultados} />
               {c.table && (
                 <div className="mt-6">
@@ -148,9 +205,12 @@ function TccView() {
                 </div>
               )}
             </Card>
-            <Section title={`${5 + (c.chapters?.length || 0)} Considerações Finais`} body={c.sections.conclusao} />
+            <Section title={`${5 + (c.chapters?.length || 0)} Considerações Finais`} body={c.sections.conclusao} onEdit={() => openEditor("section", "conclusao")} />
             <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4">Referências</h2>
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h2 className="text-xl font-bold">Referências</h2>
+                <Button size="sm" variant="ghost" onClick={() => openEditor("section", "referencias")}><Pencil className="h-3.5 w-3.5 mr-1" /> Editar</Button>
+              </div>
               <div className="space-y-2 text-sm">
                 {(c.sections.referencias || "").split("\n").filter((l: string) => l.trim()).map((l: string, i: number) => (
                   <p key={i} className="text-justify">{l}</p>
@@ -159,15 +219,64 @@ function TccView() {
             </Card>
           </div>
         )}
+
+        {editing && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={closeEditor}>
+            <Card className="max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-lg">Editar seção</h3>
+                <Button size="icon" variant="ghost" onClick={closeEditor}><X className="h-4 w-4" /></Button>
+              </div>
+              <div className="flex gap-2 mb-4">
+                <Button size="sm" variant={editMode === "manual" ? "default" : "outline"} onClick={() => setEditMode("manual")}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar manualmente
+                </Button>
+                <Button size="sm" variant={editMode === "ai" ? "default" : "outline"} onClick={() => setEditMode("ai")}>
+                  <Sparkles className="h-3.5 w-3.5 mr-1" /> Pedir à IA
+                </Button>
+              </div>
+              {editMode === "manual" ? (
+                <>
+                  <p className="text-xs text-muted-foreground mb-2">Use linhas em branco para separar parágrafos. Sem markdown.</p>
+                  <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={20} className="font-mono text-sm" />
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="outline" onClick={closeEditor} disabled={savingEdit}>Cancelar</Button>
+                    <Button onClick={saveManual} disabled={savingEdit} style={{ background: "var(--gradient-hero)" }}>
+                      {savingEdit ? <Loader2 className="animate-spin h-4 w-4" /> : <><Save className="h-4 w-4 mr-1" /> Salvar</>}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground mb-2">Descreva o que mudar (ex.: "deixe mais formal", "acrescente um parágrafo sobre X", "encurte para 200 palavras").</p>
+                  <Textarea value={aiInstruction} onChange={(e) => setAiInstruction(e.target.value)} rows={5} placeholder="Ex.: Reescreva mantendo o sentido, mas com tom mais técnico e adicione exemplos do contexto brasileiro." />
+                  <details className="mt-3 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">Ver texto atual</summary>
+                    <pre className="mt-2 p-3 bg-muted rounded whitespace-pre-wrap text-xs max-h-60 overflow-y-auto">{editText}</pre>
+                  </details>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="outline" onClick={closeEditor} disabled={savingEdit}>Cancelar</Button>
+                    <Button onClick={askAI} disabled={savingEdit || !aiInstruction.trim()} style={{ background: "var(--gradient-hero)" }}>
+                      {savingEdit ? <Loader2 className="animate-spin h-4 w-4" /> : <><Sparkles className="h-4 w-4 mr-1" /> Reescrever com IA</>}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card>
+          </div>
+        )}
       </main>
     </div>
   );
 }
 
-function Section({ title, body, keywords, keywordLabel = "Palavras-chave", italic }: any) {
+function Section({ title, body, keywords, keywordLabel = "Palavras-chave", italic, onEdit }: any) {
   return (
     <Card className="p-6">
-      <h2 className={`text-xl font-bold mb-4 ${italic ? "italic" : ""}`}>{title}</h2>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <h2 className={`text-xl font-bold ${italic ? "italic" : ""}`}>{title}</h2>
+        {onEdit && <Button size="sm" variant="ghost" onClick={onEdit}><Pencil className="h-3.5 w-3.5 mr-1" /> Editar</Button>}
+      </div>
       <Prose text={body} italic={italic} />
       {keywords && (
         <p className={`mt-4 text-sm ${italic ? "italic" : ""}`}><strong>{keywordLabel}:</strong> {keywords.join("; ")}.</p>

@@ -2,3 +2,12 @@ project_id = "wjgdlyyagdrguztkwwyc"
 
 [functions.generate-tcc]
 verify_jwt = true
+
+[functions.admin-list-users]
+verify_jwt = true
+
+[functions.admin-reset-password]
+verify_jwt = true
+
+[functions.edit-tcc-section]
+verify_jwt = true
