@@ -102,10 +102,12 @@ function AdminPage() {
               <Card key={t.id} className="p-3">
                 <Link to="/tcc/$id" params={{ id: t.id }} className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{t.title}</p>
+                    <p className="text-sm font-medium truncate">
+                      <span className="text-primary font-semibold">[{t.author_email}]</span>{" "}
+                      {t.title}
+                    </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      <span className="font-medium">{t.author_email}</span>
-                      {" · "}{t.theme}
+                      {t.theme}
                       {" · "}{formatDistanceToNow(new Date(t.created_at), { addSuffix: true, locale: ptBR })}
                     </p>
                   </div>
