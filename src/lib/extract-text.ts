@@ -7,6 +7,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
   }
 
   if (name.endsWith(".docx")) {
+    // @ts-expect-error - sem types para o build browser
     const mammoth = await import("mammoth/mammoth.browser");
     const arrayBuffer = await file.arrayBuffer();
     const result = await (mammoth as any).extractRawText({ arrayBuffer });
@@ -14,6 +15,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
   }
 
   if (name.endsWith(".pdf")) {
+    // @ts-expect-error - sem types para esse subpath
     const pdfjs: any = await import("pdfjs-dist/build/pdf.mjs");
     // worker via CDN para evitar problemas de bundling
     pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
