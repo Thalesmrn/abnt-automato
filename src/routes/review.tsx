@@ -52,8 +52,12 @@ function ReviewPage() {
       const { data, error } = await supabase.functions.invoke("review-tcc", {
         body: { text, fileName: file.name },
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      if (error) throw new Error(error.message || "Erro na análise");
+      if ((data as any)?.error) {
+        setError((data as any).error);
+        toast.error((data as any).error);
+        return;
+      }
       setReview((data as any)?.review ?? "");
       toast.success("Revisão concluída!");
     } catch (e: any) {
