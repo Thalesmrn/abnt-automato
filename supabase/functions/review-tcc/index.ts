@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 
     const { text, fileName } = await req.json();
     if (!text || typeof text !== "string") throw new Error("Texto do TCC ausente");
-    const trimmed = text.slice(0, 60000); // reduz custo por revisão e evita payloads muito grandes
+    const trimmed = text.slice(0, 30000); // reduz custo/tempo e evita payloads muito grandes
 
     const system = `Você é um revisor acadêmico sênior brasileiro, especialista em normas ABNT, redação científica e ortografia. Analise o TCC enviado pelo aluno e devolva um relatório estruturado em Markdown com as seções:
 
