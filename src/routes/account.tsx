@@ -18,7 +18,6 @@ export const Route = createFileRoute("/account")({
 function AccountPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,15 +29,11 @@ function AccountPage() {
     if (!user?.email) return;
     if (next.length < 6) return toast.error("A nova senha deve ter pelo menos 6 caracteres.");
     if (next !== confirm) return toast.error("A confirmação não confere.");
-    if (next === current) return toast.error("A nova senha deve ser diferente da atual.");
     setBusy(true);
-    // Confirma a senha atual reautenticando
-    const { error: signErr } = await supabase.auth.signInWithPassword({ email: user.email, password: current });
-    if (signErr) { setBusy(false); return toast.error("Senha atual incorreta."); }
     const { error: upErr } = await supabase.auth.updateUser({ password: next });
     setBusy(false);
     if (upErr) return toast.error(upErr.message);
-    setCurrent(""); setNext(""); setConfirm("");
+    setNext(""); setConfirm("");
     toast.success("Senha alterada com sucesso!");
   };
 
@@ -51,9 +46,8 @@ function AccountPage() {
         <h1 className="text-3xl font-bold mb-2">Minha conta</h1>
         <p className="text-muted-foreground mb-8">{user.email}</p>
         <Card className="p-6">
-          <h2 className="font-semibold text-lg mb-4">Alterar senha</h2>
+          <h2 className="font-semibold text-lg mb-4">Redefinir senha</h2>
           <form onSubmit={submit} className="space-y-4">
-            <div><Label>Senha atual</Label><Input type="password" required value={current} onChange={(e) => setCurrent(e.target.value)} /></div>
             <div><Label>Nova senha (mín. 6)</Label><Input type="password" required minLength={6} value={next} onChange={(e) => setNext(e.target.value)} /></div>
             <div><Label>Confirmar nova senha</Label><Input type="password" required minLength={6} value={confirm} onChange={(e) => setConfirm(e.target.value)} /></div>
             <Button type="submit" disabled={busy} style={{ background: "var(--gradient-hero)" }}>
