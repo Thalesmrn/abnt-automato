@@ -41,6 +41,47 @@ function localReview(text: string, fileName?: string, reason = "") {
   return `# Relatório de revisão — ${fileName ?? "TCC"}\n\n${reason ? `> Revisão gerada por análise local porque a IA não respondeu no momento (${reason}).\n\n` : ""}## 1. Visão geral\nO texto possui aproximadamente ${clean.split(/\s+/).filter(Boolean).length} palavras e ${paragraphs.length} parágrafos. A revisão local avaliou estrutura acadêmica, sinais de ABNT, clareza frasal, termos genéricos e possíveis problemas ortográficos objetivos.\n\n${density > 180 ? "Os parágrafos parecem longos; recomenda-se quebrá-los em blocos menores, com uma ideia central por parágrafo." : "A extensão média dos parágrafos parece administrável, mas ainda vale revisar se cada parágrafo apresenta uma ideia central clara."}\n\n## 2. Pontos fortes\n- O arquivo foi lido com sucesso e há conteúdo textual suficiente para revisão.\n- A análise identificou elementos estruturais e trechos que merecem atenção antes da entrega.\n- O relatório abaixo prioriza ajustes práticos de escrita, clareza e adequação acadêmica.\n\n## 3. Pontos a melhorar\n${missing.length ? missing.map((m) => `- Verifique se há uma seção explícita de **${m}** ou se ela precisa ser padronizada no documento.`).join("\n") : "- A estrutura básica esperada foi encontrada; revise a padronização dos títulos e a ordem das seções."}\n${foundWeak.length ? `\n- Reduza termos genéricos encontrados no texto: ${foundWeak.map((t) => `“${t}”`).join(", ")}. Prefira termos técnicos e evidências.` : "\n- Evite generalizações e sustente afirmações com autores, dados ou resultados."}\n\n## 4. Erros ortográficos e gramaticais\n| Trecho original | Correção sugerida | Motivo |\n|---|---|---|\n${issues.join("\n")}\n\n## 5. Sugestões de reescrita\n${rewrite}\n\n## 6. ABNT e estrutura\n- Confirme margens, fonte, espaçamento, numeração, sumário automático e títulos conforme o manual da instituição.\n- Garanta que toda citação direta ou indireta apareça nas referências e que todas as referências sejam citadas no texto.\n- Verifique capa, folha de rosto, resumo, palavras-chave, sumário, introdução, desenvolvimento, conclusão e referências.\n\n## 7. Próximos passos\n- Corrigir os itens da tabela de escrita.\n- Quebrar períodos longos e parágrafos extensos.\n- Substituir termos vagos por conceitos técnicos.\n- Conferir citações e referências em padrão ABNT.\n- Fazer uma última leitura em voz alta para encontrar repetições e falhas de coesão.`;
 }
 
+async function callGeminiDirect(apiKey: string, system: string, userPrompt: string) {
+  const models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite"];
+  const errors: string[] = [];
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    try {
+      const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.35, maxOutputTokens: 6144 },
+        }),
+      });
+
+      if (gr.ok) {
+        const gdata = await gr.json();
+        const parts = gdata?.candidates?.[0]?.content?.parts ?? [];
+        const review = parts.map((p: any) => p?.text ?? "").join("").trim();
+        if (review) return { review, model };
+        errors.push(`${model}: resposta vazia`);
+      } else {
+        const errTxt = await gr.text();
+        console.error(`Gemini direct error (${model}):`, gr.status, errTxt);
+        errors.push(`${model}: ${gr.status}`);
+      }
+    } catch (e) {
+      console.error(`Gemini direct exception (${model}):`, e);
+      errors.push(`${model}: ${(e as any)?.message ?? "erro desconhecido"}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error(errors.join("; "));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   try {
@@ -49,7 +90,7 @@ Deno.serve(async (req) => {
 
     const { text, fileName } = await req.json();
     if (!text || typeof text !== "string") throw new Error("Texto do TCC ausente");
-    const trimmed = text.slice(0, 60000); // reduz custo por revisão e evita payloads muito grandes
+    const trimmed = text.slice(0, 30000); // reduz custo/tempo e evita payloads muito grandes
 
     const system = `Você é um revisor acadêmico sênior brasileiro, especialista em normas ABNT, redação científica e ortografia. Analise o TCC enviado pelo aluno e devolva um relatório estruturado em Markdown com as seções:
 
@@ -80,8 +121,18 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
 
     const userPrompt = `Arquivo: ${fileName ?? "tcc.txt"}\n\nConteúdo do TCC:\n\n${trimmed}`;
 
-    // 1) Tenta Lovable AI Gateway (se houver chave)
+    // 1) Usa primeiro a chave Gemini do usuário quando configurada
     let lovableReason = "";
+    if (GEMINI_API_KEY) {
+      try {
+        const result = await callGeminiDirect(GEMINI_API_KEY, system, userPrompt);
+        return new Response(JSON.stringify({ review: result.review, provider: "gemini", model: result.model }), { headers: { ...cors, "Content-Type": "application/json" } });
+      } catch (e) {
+        lovableReason = `gemini direto falhou (${(e as any)?.message ?? "erro desconhecido"})`;
+      }
+    }
+
+    // 2) Fallback: Lovable AI Gateway (se houver chave)
     if (LOVABLE_API_KEY) {
       try {
         const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -108,36 +159,6 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
       }
     } else {
       lovableReason = "gateway sem chave";
-    }
-
-    // 2) Fallback: Gemini API direto com a chave do usuário
-    if (GEMINI_API_KEY) {
-      try {
-        const model = "gemini-2.0-flash";
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const gr = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { role: "system", parts: [{ text: system }] },
-            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
-          }),
-        });
-        if (gr.ok) {
-          const gdata = await gr.json();
-          const parts = gdata?.candidates?.[0]?.content?.parts ?? [];
-          const review = parts.map((p: any) => p?.text ?? "").join("").trim();
-          if (review) return new Response(JSON.stringify({ review, provider: "gemini" }), { headers: { ...cors, "Content-Type": "application/json" } });
-        } else {
-          const errTxt = await gr.text();
-          console.error("Gemini direct error:", gr.status, errTxt);
-          lovableReason += ` | gemini direto falhou (${gr.status})`;
-        }
-      } catch (e) {
-        console.error("Gemini direct exception:", e);
-        lovableReason += ` | exceção no gemini: ${(e as any)?.message ?? "desconhecida"}`;
-      }
     }
 
     // 3) Último recurso: revisão local

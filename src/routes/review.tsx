@@ -61,6 +61,8 @@ function ReviewPage() {
       setReview((data as any)?.review ?? "");
       if ((data as any)?.fallback) {
         toast.warning("Revisão concluída em modo local.");
+      } else if ((data as any)?.provider === "gemini") {
+        toast.success("Revisão concluída com Gemini.");
       } else {
         toast.success("Revisão concluída!");
       }
