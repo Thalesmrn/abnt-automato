@@ -42,18 +42,21 @@ function localReview(text: string, fileName?: string, reason = "") {
 }
 
 async function callGeminiDirect(apiKey: string, system: string, userPrompt: string) {
-  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash"];
+  const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
   const errors: string[] = [];
 
   for (const model of models) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 18000);
     try {
       const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-          generationConfig: { temperature: 0.35, maxOutputTokens: 8192 },
+          generationConfig: { temperature: 0.35, maxOutputTokens: 6144 },
         }),
       });
 
@@ -71,6 +74,8 @@ async function callGeminiDirect(apiKey: string, system: string, userPrompt: stri
     } catch (e) {
       console.error(`Gemini direct exception (${model}):`, e);
       errors.push(`${model}: ${(e as any)?.message ?? "erro desconhecido"}`);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
