@@ -45,11 +45,14 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("Lovable AI não está configurado.");
 
     const { text, fileName } = await req.json();
     if (!text || typeof text !== "string") throw new Error("Texto do TCC ausente");
     const trimmed = text.slice(0, 60000); // reduz custo por revisão e evita payloads muito grandes
+
+    if (!LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "configuração indisponível"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
 
     const system = `Você é um revisor acadêmico sênior brasileiro, especialista em normas ABNT, redação científica e ortografia. Analise o TCC enviado pelo aluno e devolva um relatório estruturado em Markdown com as seções:
 
@@ -82,7 +85,7 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: system },
           { role: "user", content: `Arquivo: ${fileName ?? "tcc.txt"}\n\nConteúdo do TCC:\n\n${trimmed}` },
@@ -90,8 +93,8 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
       }),
     });
 
-    if (r.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em alguns instantes.", code: "rate_limited" }), { headers: { ...cors, "Content-Type": "application/json" } });
-    if (r.status === 402) return new Response(JSON.stringify({ error: "Saldo do Lovable AI esgotado. Os créditos de edição/build não são o mesmo saldo da IA do app; adicione saldo em Settings > Cloud & AI balance.", code: "ai_balance_required" }), { headers: { ...cors, "Content-Type": "application/json" } });
+    if (r.status === 429) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "limite temporário de requisições"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    if (r.status === 402) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "saldo de IA não reconhecido pelo gateway"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     if (!r.ok) throw new Error(`AI ${r.status}: ${await r.text()}`);
 
     const data = await r.json();
