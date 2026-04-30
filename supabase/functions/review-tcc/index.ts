@@ -42,12 +42,12 @@ function localReview(text: string, fileName?: string, reason = "") {
 }
 
 async function callGeminiDirect(apiKey: string, system: string, userPrompt: string) {
-  const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
+  const models = ["gemini-2.5-flash-lite", "gemini-2.0-flash-lite"];
   const errors: string[] = [];
 
   for (const model of models) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 18000);
+    const timeout = setTimeout(() => controller.abort(), 9000);
     try {
       const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: "POST",
