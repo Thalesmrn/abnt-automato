@@ -156,36 +156,6 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
       lovableReason = "gateway sem chave";
     }
 
-    // 2) Fallback: Gemini API direto com a chave do usuário
-    if (GEMINI_API_KEY) {
-      try {
-        const model = "gemini-2.0-flash";
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const gr = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { role: "system", parts: [{ text: system }] },
-            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
-          }),
-        });
-        if (gr.ok) {
-          const gdata = await gr.json();
-          const parts = gdata?.candidates?.[0]?.content?.parts ?? [];
-          const review = parts.map((p: any) => p?.text ?? "").join("").trim();
-          if (review) return new Response(JSON.stringify({ review, provider: "gemini" }), { headers: { ...cors, "Content-Type": "application/json" } });
-        } else {
-          const errTxt = await gr.text();
-          console.error("Gemini direct error:", gr.status, errTxt);
-          lovableReason += ` | gemini direto falhou (${gr.status})`;
-        }
-      } catch (e) {
-        console.error("Gemini direct exception:", e);
-        lovableReason += ` | exceção no gemini: ${(e as any)?.message ?? "desconhecida"}`;
-      }
-    }
-
     // 3) Último recurso: revisão local
     return new Response(JSON.stringify({ review: localReview(trimmed, fileName, lovableReason || "IA indisponível"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (e: any) {
