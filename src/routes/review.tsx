@@ -72,14 +72,58 @@ function ReviewPage() {
     }
   };
 
-  const downloadReview = () => {
-    const blob = new Blob([review], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `revisao-${(file?.name ?? "tcc").replace(/\.[^.]+$/, "")}.md`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 5000);
+  const downloadReview = async () => {
+    const pdfMakeMod: any = await import("pdfmake/build/pdfmake");
+    const pdfFontsMod: any = await import("pdfmake/build/vfs_fonts");
+    const pdfMake = pdfMakeMod.default ?? pdfMakeMod;
+    const embeddedFonts = pdfFontsMod.default ?? pdfFontsMod.vfs ?? pdfFontsMod;
+    if (typeof pdfMake.addVirtualFileSystem === "function") {
+      pdfMake.addVirtualFileSystem(embeddedFonts);
+    } else {
+      pdfMake.vfs = embeddedFonts;
+    }
+
+    const baseName = (file?.name ?? "tcc").replace(/\.[^.]+$/, "");
+    const lines = review.split("\n");
+    const content: any[] = [
+      { text: "Relatório de Revisão de TCC", style: "title" },
+      { text: `Arquivo analisado: ${file?.name ?? "—"}`, style: "meta" },
+      { text: `Gerado em: ${new Date().toLocaleString("pt-BR")}`, style: "meta", margin: [0, 0, 0, 16] },
+    ];
+
+    for (const raw of lines) {
+      const line = raw.replace(/\s+$/, "");
+      if (!line.trim()) { content.push({ text: " ", margin: [0, 0, 0, 4] }); continue; }
+      const h1 = /^#\s+(.*)/.exec(line);
+      const h2 = /^##\s+(.*)/.exec(line);
+      const h3 = /^###\s+(.*)/.exec(line);
+      const li = /^\s*[-*]\s+(.*)/.exec(line);
+      if (h1) { content.push({ text: h1[1], style: "h1" }); continue; }
+      if (h2) { content.push({ text: h2[1], style: "h2" }); continue; }
+      if (h3) { content.push({ text: h3[1], style: "h3" }); continue; }
+      if (li) { content.push({ text: `• ${li[1]}`, margin: [12, 0, 0, 4], alignment: "justify" }); continue; }
+      content.push({ text: line, alignment: "justify", margin: [0, 0, 0, 4] });
+    }
+
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [56, 56, 56, 56],
+      defaultStyle: { font: "Roboto", fontSize: 11, lineHeight: 1.4 },
+      styles: {
+        title: { fontSize: 18, bold: true, margin: [0, 0, 0, 8] },
+        meta: { fontSize: 9, color: "#666" },
+        h1: { fontSize: 15, bold: true, margin: [0, 14, 0, 6] },
+        h2: { fontSize: 13, bold: true, margin: [0, 12, 0, 4] },
+        h3: { fontSize: 12, bold: true, margin: [0, 10, 0, 4] },
+      },
+      content,
+      footer: (currentPage: number, pageCount: number) => ({
+        text: `${currentPage} / ${pageCount}`, alignment: "right", fontSize: 9, margin: [0, 10, 56, 0],
+      }),
+    };
+
+    const pdf = pdfMake.createPdf(docDefinition);
+    pdf.download(`revisao-${baseName}.pdf`);
   };
 
   if (loading || !user) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
@@ -147,7 +191,7 @@ function ReviewPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">Relatório da revisão</h2>
               <Button variant="outline" size="sm" onClick={downloadReview}>
-                <Download className="h-4 w-4 mr-1" /> Baixar (.md)
+                <Download className="h-4 w-4 mr-1" /> Baixar PDF
               </Button>
             </div>
             <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{review}</pre>
