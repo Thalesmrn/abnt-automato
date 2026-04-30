@@ -116,8 +116,18 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
 
     const userPrompt = `Arquivo: ${fileName ?? "tcc.txt"}\n\nConteúdo do TCC:\n\n${trimmed}`;
 
-    // 1) Tenta Lovable AI Gateway (se houver chave)
+    // 1) Usa primeiro a chave Gemini do usuário quando configurada
     let lovableReason = "";
+    if (GEMINI_API_KEY) {
+      try {
+        const result = await callGeminiDirect(GEMINI_API_KEY, system, userPrompt);
+        return new Response(JSON.stringify({ review: result.review, provider: "gemini", model: result.model }), { headers: { ...cors, "Content-Type": "application/json" } });
+      } catch (e) {
+        lovableReason = `gemini direto falhou (${(e as any)?.message ?? "erro desconhecido"})`;
+      }
+    }
+
+    // 2) Fallback: Lovable AI Gateway (se houver chave)
     if (LOVABLE_API_KEY) {
       try {
         const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
