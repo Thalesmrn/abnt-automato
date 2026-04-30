@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { GraduationCap, Sparkles, FileText, Image as ImageIcon, BookOpen, Zap } from "lucide-react";
+import { GraduationCap, Sparkles, FileText, Image as ImageIcon, BookOpen, Zap, FileSearch } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -67,6 +67,15 @@ function Index() {
             >
               <Zap className="mr-2 h-5 w-5" />
               Gerar meu TCC agora
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-12 px-8 text-base"
+              onClick={() => navigate({ to: user ? "/review" : "/auth" })}
+            >
+              <FileSearch className="mr-2 h-5 w-5" />
+              Revisar meu TCC
             </Button>
           </div>
         </div>
