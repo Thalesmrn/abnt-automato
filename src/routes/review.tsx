@@ -59,7 +59,11 @@ function ReviewPage() {
         return;
       }
       setReview((data as any)?.review ?? "");
-      toast.success("Revisão concluída!");
+      if ((data as any)?.fallback) {
+        toast.warning("Revisão concluída em modo local.");
+      } else {
+        toast.success("Revisão concluída!");
+      }
     } catch (e: any) {
       setError(e.message ?? "Erro na análise");
       toast.error(e.message ?? "Erro na análise");
