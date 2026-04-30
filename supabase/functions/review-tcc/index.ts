@@ -95,7 +95,7 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
 
     if (r.status === 429) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "limite temporário de requisições"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
     if (r.status === 402) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "saldo de IA não reconhecido pelo gateway"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-    if (!r.ok) throw new Error(`AI ${r.status}: ${await r.text()}`);
+    if (!r.ok) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, `serviço de IA indisponível (${r.status})`), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
 
     const data = await r.json();
     const review = data.choices?.[0]?.message?.content ?? "";
