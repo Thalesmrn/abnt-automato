@@ -53,8 +53,8 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
       }),
     });
 
-    if (r.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em alguns instantes." }), { status: 429, headers: { ...cors, "Content-Type": "application/json" } });
-    if (r.status === 402) return new Response(JSON.stringify({ error: "Saldo do Lovable AI esgotado. Os créditos de edição/build não são o mesmo saldo da IA do app; adicione saldo em Settings > Cloud & AI balance." }), { status: 402, headers: { ...cors, "Content-Type": "application/json" } });
+    if (r.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em alguns instantes.", code: "rate_limited" }), { headers: { ...cors, "Content-Type": "application/json" } });
+    if (r.status === 402) return new Response(JSON.stringify({ error: "Saldo do Lovable AI esgotado. Os créditos de edição/build não são o mesmo saldo da IA do app; adicione saldo em Settings > Cloud & AI balance.", code: "ai_balance_required" }), { headers: { ...cors, "Content-Type": "application/json" } });
     if (!r.ok) throw new Error(`AI ${r.status}: ${await r.text()}`);
 
     const data = await r.json();
