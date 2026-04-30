@@ -4,14 +4,15 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   try {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("Lovable AI não está configurado.");
+
     const { text, fileName } = await req.json();
     if (!text || typeof text !== "string") throw new Error("Texto do TCC ausente");
-    const trimmed = text.slice(0, 120000); // limite de segurança
+    const trimmed = text.slice(0, 60000); // reduz custo por revisão e evita payloads muito grandes
 
     const system = `Você é um revisor acadêmico sênior brasileiro, especialista em normas ABNT, redação científica e ortografia. Analise o TCC enviado pelo aluno e devolva um relatório estruturado em Markdown com as seções:
 
@@ -44,7 +45,7 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: system },
           { role: "user", content: `Arquivo: ${fileName ?? "tcc.txt"}\n\nConteúdo do TCC:\n\n${trimmed}` },
@@ -53,7 +54,7 @@ Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no t
     });
 
     if (r.status === 429) return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em alguns instantes." }), { status: 429, headers: { ...cors, "Content-Type": "application/json" } });
-    if (r.status === 402) return new Response(JSON.stringify({ error: "Créditos de IA esgotados. Adicione créditos em Settings > Workspace > Usage." }), { status: 402, headers: { ...cors, "Content-Type": "application/json" } });
+    if (r.status === 402) return new Response(JSON.stringify({ error: "Saldo do Lovable AI esgotado. Os créditos de edição/build não são o mesmo saldo da IA do app; adicione saldo em Settings > Cloud & AI balance." }), { status: 402, headers: { ...cors, "Content-Type": "application/json" } });
     if (!r.ok) throw new Error(`AI ${r.status}: ${await r.text()}`);
 
     const data = await r.json();
