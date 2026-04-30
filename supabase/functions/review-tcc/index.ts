@@ -45,14 +45,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
     const { text, fileName } = await req.json();
     if (!text || typeof text !== "string") throw new Error("Texto do TCC ausente");
     const trimmed = text.slice(0, 60000); // reduz custo por revisão e evita payloads muito grandes
-
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "configuração indisponível"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-    }
 
     const system = `Você é um revisor acadêmico sênior brasileiro, especialista em normas ABNT, redação científica e ortografia. Analise o TCC enviado pelo aluno e devolva um relatório estruturado em Markdown com as seções:
 
@@ -81,25 +78,70 @@ Checklist objetivo do que o aluno deve revisar antes de entregar.
 
 Seja direto, técnico e construtivo. Não invente conteúdo que não esteja no texto.`;
 
-    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: `Arquivo: ${fileName ?? "tcc.txt"}\n\nConteúdo do TCC:\n\n${trimmed}` },
-        ],
-      }),
-    });
+    const userPrompt = `Arquivo: ${fileName ?? "tcc.txt"}\n\nConteúdo do TCC:\n\n${trimmed}`;
 
-    if (r.status === 429) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "limite temporário de requisições"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-    if (r.status === 402) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, "saldo de IA não reconhecido pelo gateway"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
-    if (!r.ok) return new Response(JSON.stringify({ review: localReview(trimmed, fileName, `serviço de IA indisponível (${r.status})`), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+    // 1) Tenta Lovable AI Gateway (se houver chave)
+    let lovableReason = "";
+    if (LOVABLE_API_KEY) {
+      try {
+        const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: userPrompt },
+            ],
+          }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          const review = data.choices?.[0]?.message?.content ?? "";
+          if (review) return new Response(JSON.stringify({ review, provider: "lovable" }), { headers: { ...cors, "Content-Type": "application/json" } });
+          lovableReason = "resposta vazia do gateway";
+        } else if (r.status === 402) lovableReason = "saldo do gateway esgotado";
+        else if (r.status === 429) lovableReason = "limite temporário do gateway";
+        else lovableReason = `gateway indisponível (${r.status})`;
+      } catch (e) {
+        lovableReason = `falha ao chamar gateway: ${(e as any)?.message ?? "desconhecida"}`;
+      }
+    } else {
+      lovableReason = "gateway sem chave";
+    }
 
-    const data = await r.json();
-    const review = data.choices?.[0]?.message?.content ?? "";
-    return new Response(JSON.stringify({ review }), { headers: { ...cors, "Content-Type": "application/json" } });
+    // 2) Fallback: Gemini API direto com a chave do usuário
+    if (GEMINI_API_KEY) {
+      try {
+        const model = "gemini-2.0-flash";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const gr = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { role: "system", parts: [{ text: system }] },
+            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
+          }),
+        });
+        if (gr.ok) {
+          const gdata = await gr.json();
+          const parts = gdata?.candidates?.[0]?.content?.parts ?? [];
+          const review = parts.map((p: any) => p?.text ?? "").join("").trim();
+          if (review) return new Response(JSON.stringify({ review, provider: "gemini" }), { headers: { ...cors, "Content-Type": "application/json" } });
+        } else {
+          const errTxt = await gr.text();
+          console.error("Gemini direct error:", gr.status, errTxt);
+          lovableReason += ` | gemini direto falhou (${gr.status})`;
+        }
+      } catch (e) {
+        console.error("Gemini direct exception:", e);
+        lovableReason += ` | exceção no gemini: ${(e as any)?.message ?? "desconhecida"}`;
+      }
+    }
+
+    // 3) Último recurso: revisão local
+    return new Response(JSON.stringify({ review: localReview(trimmed, fileName, lovableReason || "IA indisponível"), fallback: true }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("review-tcc error:", e);
     return new Response(JSON.stringify({ error: e?.message ?? "Erro" }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
