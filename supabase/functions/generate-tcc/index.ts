@@ -99,7 +99,7 @@ Inclua exatamente ${cfg.chapters} capítulos de desenvolvimento.` },
     await admin.from("tccs").update({ progress: 15 }).eq("id", tccId);
 
     // 2. Generate sections in parallel
-    const sysAcad = `Você é um pesquisador acadêmico brasileiro. Escreva texto formal, em português do Brasil, seguindo normas ABNT, com citações no formato (AUTOR, ANO). Não use markdown, apenas parágrafos separados por quebras duplas. Aproximadamente ${cfg.wordsPerSection} palavras.`;
+    const sysAcad = `Você é um pesquisador acadêmico brasileiro. Escreva texto formal, em português do Brasil, seguindo normas ABNT. Use citações dentro do texto APENAS no formato curto (Sobrenome, Ano) — por exemplo: (Silva, 2023). NUNCA inclua, ao final da seção, blocos como "Referências", "Referências Bibliográficas", "Bibliografia" ou listas de obras completas — a lista de referências completa só aparecerá em uma seção dedicada do TCC. Não use markdown, apenas parágrafos separados por quebras duplas. Aproximadamente ${cfg.wordsPerSection} palavras.`;
 
     const taskList = [
       { key: "resumo", prompt: `Escreva o RESUMO (em português) de um TCC sobre "${tcc.theme}" (título "${tcc.title}"). Objetivo: ${outline.objetivo_geral}. Problema: ${outline.problema}. Estrutura: contexto, objetivo, metodologia, resultados esperados, conclusão. Texto único, parágrafo único, ~250 palavras. Sem markdown.` },
