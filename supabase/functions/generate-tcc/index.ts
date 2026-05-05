@@ -61,6 +61,125 @@ function stripCodeFence(s: string): string {
   return s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
 }
 
+// ===== Real references via OpenAlex + CrossRef =====
+const MESES_PT = ["jan.", "fev.", "mar.", "abr.", "maio", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."];
+function dataAcessoHoje(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, "0")} ${MESES_PT[d.getMonth()]} ${d.getFullYear()}`;
+}
+function splitAuthor(full: string): { sobrenome: string; nomes: string } {
+  const clean = (full || "").trim().replace(/\s+/g, " ");
+  if (!clean) return { sobrenome: "AUTOR DESCONHECIDO", nomes: "" };
+  const parts = clean.split(" ");
+  const sobrenome = parts.pop()!.toUpperCase();
+  return { sobrenome, nomes: parts.join(" ") };
+}
+function formatAuthors(authors: string[]): string {
+  if (!authors.length) return "AUTOR DESCONHECIDO";
+  const fmt = (a: string) => {
+    const { sobrenome, nomes } = splitAuthor(a);
+    return nomes ? `${sobrenome}, ${nomes}` : sobrenome;
+  };
+  if (authors.length === 1) return fmt(authors[0]);
+  if (authors.length <= 3) return authors.map(fmt).join("; ");
+  return `${fmt(authors[0])} et al.`;
+}
+function formatAbnt(ref: {
+  authors: string[];
+  year?: number | string;
+  title: string;
+  venue?: string;
+  volume?: string | number;
+  issue?: string | number;
+  pages?: string;
+  doi?: string;
+  url?: string;
+}): string {
+  const autores = formatAuthors(ref.authors);
+  const ano = ref.year ?? "s.d.";
+  const titulo = (ref.title || "Sem título").trim().replace(/\s+/g, " ");
+  let s = `${autores}. ${titulo}. `;
+  if (ref.venue) {
+    s += `${ref.venue}`;
+    if (ref.volume) s += `, v. ${ref.volume}`;
+    if (ref.issue) s += `, n. ${ref.issue}`;
+    if (ref.pages) s += `, p. ${ref.pages}`;
+    s += `, ${ano}.`;
+  } else {
+    s += `${ano}.`;
+  }
+  const link = ref.doi ? `https://doi.org/${ref.doi.replace(/^https?:\/\/doi\.org\//, "")}` : ref.url;
+  if (link) s += ` Disponível em: ${link}. Acesso em: ${dataAcessoHoje()}.`;
+  return s;
+}
+
+async function fetchOpenAlex(theme: string, perPage = 12): Promise<any[]> {
+  try {
+    const url = `https://api.openalex.org/works?search=${encodeURIComponent(theme)}&per-page=${perPage}&sort=cited_by_count:desc&filter=has_doi:true`;
+    const r = await fetch(url, { headers: { "User-Agent": "tcc-generator (mailto:contato@example.com)" } });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return (j.results || []).map((w: any) => ({
+      authors: (w.authorships || []).map((a: any) => a.author?.display_name).filter(Boolean),
+      year: w.publication_year,
+      title: w.title,
+      venue: w.primary_location?.source?.display_name || w.host_venue?.display_name,
+      volume: w.biblio?.volume,
+      issue: w.biblio?.issue,
+      pages: w.biblio?.first_page && w.biblio?.last_page ? `${w.biblio.first_page}-${w.biblio.last_page}` : undefined,
+      doi: w.doi ? w.doi.replace(/^https?:\/\/doi\.org\//, "") : undefined,
+      url: w.primary_location?.landing_page_url || w.id,
+    }));
+  } catch (e) {
+    console.error("openalex err", e);
+    return [];
+  }
+}
+async function fetchCrossRef(theme: string, rows = 8): Promise<any[]> {
+  try {
+    const url = `https://api.crossref.org/works?query=${encodeURIComponent(theme)}&rows=${rows}&sort=is-referenced-by-count&order=desc`;
+    const r = await fetch(url, { headers: { "User-Agent": "tcc-generator (mailto:contato@example.com)" } });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return (j.message?.items || []).map((it: any) => ({
+      authors: (it.author || []).map((a: any) => `${a.given ?? ""} ${a.family ?? ""}`.trim()).filter(Boolean),
+      year: it.issued?.["date-parts"]?.[0]?.[0],
+      title: Array.isArray(it.title) ? it.title[0] : it.title,
+      venue: Array.isArray(it["container-title"]) ? it["container-title"][0] : it["container-title"],
+      volume: it.volume,
+      issue: it.issue,
+      pages: it.page,
+      doi: it.DOI,
+      url: it.URL,
+    }));
+  } catch (e) {
+    console.error("crossref err", e);
+    return [];
+  }
+}
+function dedupeRefs(refs: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const r of refs) {
+    const key = (r.doi || r.title || "").toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (r.title && r.authors?.length) out.push(r);
+  }
+  return out;
+}
+async function buildRealReferences(theme: string): Promise<{ text: string; citations: { sobrenome: string; ano: string | number }[] }> {
+  const [oa, cr] = await Promise.all([fetchOpenAlex(theme, 12), fetchCrossRef(theme, 8)]);
+  const all = dedupeRefs([...oa, ...cr]).slice(0, 15);
+  if (all.length === 0) return { text: "", citations: [] };
+  const formatted = all.map(formatAbnt).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const citations = all.map((r) => {
+    const { sobrenome } = splitAuthor(r.authors[0] || "");
+    return { sobrenome: sobrenome.charAt(0) + sobrenome.slice(1).toLowerCase(), ano: r.year ?? "s.d." };
+  });
+  return { text: formatted.join("\n"), citations };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -98,8 +217,18 @@ Inclua exatamente ${cfg.chapters} capítulos de desenvolvimento.` },
     const outline = JSON.parse(stripCodeFence(outlineRaw));
     await admin.from("tccs").update({ progress: 15 }).eq("id", tccId);
 
+    // 1.5 Fetch REAL references from OpenAlex + CrossRef
+    const realRefs = await buildRealReferences(tcc.theme);
+    const citationPool = realRefs.citations.length
+      ? realRefs.citations.map((c) => `(${c.sobrenome}, ${c.ano})`).join(", ")
+      : "";
+    const citationInstr = citationPool
+      ? `Use SOMENTE citações no formato (Sobrenome, Ano) escolhidas EXCLUSIVAMENTE desta lista de autores reais já presentes nas referências do trabalho: ${citationPool}. Não invente outros autores.`
+      : `Use citações no formato (Sobrenome, Ano) com autores plausíveis.`;
+    await admin.from("tccs").update({ progress: 20 }).eq("id", tccId);
+
     // 2. Generate sections in parallel
-    const sysAcad = `Você é um pesquisador acadêmico brasileiro. Escreva texto formal, em português do Brasil, seguindo normas ABNT. Use citações dentro do texto APENAS no formato curto (Sobrenome, Ano) — por exemplo: (Silva, 2023). NUNCA inclua, ao final da seção, blocos como "Referências", "Referências Bibliográficas", "Bibliografia" ou listas de obras completas — a lista de referências completa só aparecerá em uma seção dedicada do TCC. Não use markdown, apenas parágrafos separados por quebras duplas. Aproximadamente ${cfg.wordsPerSection} palavras.`;
+    const sysAcad = `Você é um pesquisador acadêmico brasileiro. Escreva texto formal, em português do Brasil, seguindo normas ABNT. ${citationInstr} NUNCA inclua, ao final da seção, blocos como "Referências", "Referências Bibliográficas", "Bibliografia" ou listas de obras completas — a lista de referências completa só aparecerá em uma seção dedicada do TCC. Não use markdown, apenas parágrafos separados por quebras duplas. Aproximadamente ${cfg.wordsPerSection} palavras.`;
 
     const taskList = [
       { key: "resumo", prompt: `Escreva o RESUMO (em português) de um TCC sobre "${tcc.theme}" (título "${tcc.title}"). Objetivo: ${outline.objetivo_geral}. Problema: ${outline.problema}. Estrutura: contexto, objetivo, metodologia, resultados esperados, conclusão. Texto único, parágrafo único, ~250 palavras. Sem markdown.` },
@@ -113,30 +242,6 @@ Inclua exatamente ${cfg.chapters} capítulos de desenvolvimento.` },
       })),
       { key: "resultados", prompt: `Escreva a seção RESULTADOS E DISCUSSÃO de um TCC sobre "${tcc.theme}". Apresente resultados plausíveis (com números, percentuais, exemplos), discuta-os à luz da literatura citada, com citações (SOBRENOME, ANO). Mencione a Tabela 1 com dados.` },
       { key: "conclusao", prompt: `Escreva as CONSIDERAÇÕES FINAIS de um TCC sobre "${tcc.theme}". Retome o objetivo (${outline.objetivo_geral}), sintetize os principais achados, aponte limitações e sugira pesquisas futuras. ~${Math.round(cfg.wordsPerSection * 0.6)} palavras.` },
-      { key: "referencias", prompt: `Liste 15 referências bibliográficas REAIS e VERIFICÁVEIS no formato ABNT (NBR 6023) sobre "${tcc.theme}".
-
-REGRAS OBRIGATÓRIAS — não invente nada:
-1. Use APENAS obras que você tem certeza de que existem (livros clássicos da área, autores reconhecidos, artigos amplamente citados, normas ABNT, dissertações/teses já publicadas, manuais oficiais).
-2. Priorize autores brasileiros consagrados da área e clássicos internacionais traduzidos.
-3. Inclua de forma equilibrada:
-   - Livros de metodologia científica reais (ex.: Antonio Carlos Gil — "Como Elaborar Projetos de Pesquisa", Atlas; Marina de Andrade Marconi e Eva Maria Lakatos — "Fundamentos de Metodologia Científica", Atlas; Pedro Demo; Minayo).
-   - Livros e artigos clássicos específicos do tema "${tcc.theme}" — apenas autores e títulos que você conhece de verdade.
-   - Quando incluir artigo de periódico, use revistas brasileiras reais (ex.: SciELO, Revista Brasileira de..., Cadernos de Saúde Pública, RAE, RAUSP, Educação & Sociedade) ou periódicos internacionais conhecidos.
-   - Quando incluir documento oficial, use órgãos reais (IBGE, MEC, Ministério da Saúde, OMS, ABNT — NBR 6023:2018, NBR 14724:2011, NBR 10520:2023).
-
-4. NÃO invente:
-   - títulos de livros que não existam,
-   - artigos com volume/número/páginas fictícios,
-   - DOIs ou URLs. NÃO inclua links/URLs/DOIs nas referências — deixe apenas a referência textual.
-   - editoras inexistentes ou cidades erradas para a editora.
-
-5. Se tiver dúvida sobre a existência exata de uma obra, prefira não incluí-la e use outra que você conheça com segurança.
-
-Formato exato (uma referência por linha, sem numeração, sem marcadores, sem markdown, ordenadas alfabeticamente pelo sobrenome):
-SOBRENOME, Nome. Título da obra. Edição. Cidade: Editora, Ano.
-SOBRENOME, Nome. Título do artigo. Nome da Revista, v. X, n. Y, p. ZZ-ZZ, Ano.
-
-Retorne SOMENTE as 15 linhas de referências.` },
     ];
 
     const results = await Promise.all(
@@ -149,6 +254,17 @@ Retorne SOMENTE as 15 linhas de referências.` },
       })
     );
     const sections = Object.fromEntries(results);
+
+    // Override referencias with real data when available
+    if (realRefs.text) {
+      sections.referencias = realRefs.text;
+    } else {
+      // Fallback: ask the AI as before
+      sections.referencias = await callAI([
+        { role: "system", content: sysAcad },
+        { role: "user", content: `Liste 15 referências reais em formato ABNT sobre "${tcc.theme}". Uma por linha, sem numeração, ordenadas alfabeticamente. Inclua apenas obras que você tem certeza de existir.` },
+      ]);
+    }
 
     await admin.from("tccs").update({ progress: 70 }).eq("id", tccId);
 
