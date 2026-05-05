@@ -61,6 +61,125 @@ function stripCodeFence(s: string): string {
   return s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
 }
 
+// ===== Real references via OpenAlex + CrossRef =====
+const MESES_PT = ["jan.", "fev.", "mar.", "abr.", "maio", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."];
+function dataAcessoHoje(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, "0")} ${MESES_PT[d.getMonth()]} ${d.getFullYear()}`;
+}
+function splitAuthor(full: string): { sobrenome: string; nomes: string } {
+  const clean = (full || "").trim().replace(/\s+/g, " ");
+  if (!clean) return { sobrenome: "AUTOR DESCONHECIDO", nomes: "" };
+  const parts = clean.split(" ");
+  const sobrenome = parts.pop()!.toUpperCase();
+  return { sobrenome, nomes: parts.join(" ") };
+}
+function formatAuthors(authors: string[]): string {
+  if (!authors.length) return "AUTOR DESCONHECIDO";
+  const fmt = (a: string) => {
+    const { sobrenome, nomes } = splitAuthor(a);
+    return nomes ? `${sobrenome}, ${nomes}` : sobrenome;
+  };
+  if (authors.length === 1) return fmt(authors[0]);
+  if (authors.length <= 3) return authors.map(fmt).join("; ");
+  return `${fmt(authors[0])} et al.`;
+}
+function formatAbnt(ref: {
+  authors: string[];
+  year?: number | string;
+  title: string;
+  venue?: string;
+  volume?: string | number;
+  issue?: string | number;
+  pages?: string;
+  doi?: string;
+  url?: string;
+}): string {
+  const autores = formatAuthors(ref.authors);
+  const ano = ref.year ?? "s.d.";
+  const titulo = (ref.title || "Sem título").trim().replace(/\s+/g, " ");
+  let s = `${autores}. ${titulo}. `;
+  if (ref.venue) {
+    s += `${ref.venue}`;
+    if (ref.volume) s += `, v. ${ref.volume}`;
+    if (ref.issue) s += `, n. ${ref.issue}`;
+    if (ref.pages) s += `, p. ${ref.pages}`;
+    s += `, ${ano}.`;
+  } else {
+    s += `${ano}.`;
+  }
+  const link = ref.doi ? `https://doi.org/${ref.doi.replace(/^https?:\/\/doi\.org\//, "")}` : ref.url;
+  if (link) s += ` Disponível em: ${link}. Acesso em: ${dataAcessoHoje()}.`;
+  return s;
+}
+
+async function fetchOpenAlex(theme: string, perPage = 12): Promise<any[]> {
+  try {
+    const url = `https://api.openalex.org/works?search=${encodeURIComponent(theme)}&per-page=${perPage}&sort=cited_by_count:desc&filter=has_doi:true`;
+    const r = await fetch(url, { headers: { "User-Agent": "tcc-generator (mailto:contato@example.com)" } });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return (j.results || []).map((w: any) => ({
+      authors: (w.authorships || []).map((a: any) => a.author?.display_name).filter(Boolean),
+      year: w.publication_year,
+      title: w.title,
+      venue: w.primary_location?.source?.display_name || w.host_venue?.display_name,
+      volume: w.biblio?.volume,
+      issue: w.biblio?.issue,
+      pages: w.biblio?.first_page && w.biblio?.last_page ? `${w.biblio.first_page}-${w.biblio.last_page}` : undefined,
+      doi: w.doi ? w.doi.replace(/^https?:\/\/doi\.org\//, "") : undefined,
+      url: w.primary_location?.landing_page_url || w.id,
+    }));
+  } catch (e) {
+    console.error("openalex err", e);
+    return [];
+  }
+}
+async function fetchCrossRef(theme: string, rows = 8): Promise<any[]> {
+  try {
+    const url = `https://api.crossref.org/works?query=${encodeURIComponent(theme)}&rows=${rows}&sort=is-referenced-by-count&order=desc`;
+    const r = await fetch(url, { headers: { "User-Agent": "tcc-generator (mailto:contato@example.com)" } });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return (j.message?.items || []).map((it: any) => ({
+      authors: (it.author || []).map((a: any) => `${a.given ?? ""} ${a.family ?? ""}`.trim()).filter(Boolean),
+      year: it.issued?.["date-parts"]?.[0]?.[0],
+      title: Array.isArray(it.title) ? it.title[0] : it.title,
+      venue: Array.isArray(it["container-title"]) ? it["container-title"][0] : it["container-title"],
+      volume: it.volume,
+      issue: it.issue,
+      pages: it.page,
+      doi: it.DOI,
+      url: it.URL,
+    }));
+  } catch (e) {
+    console.error("crossref err", e);
+    return [];
+  }
+}
+function dedupeRefs(refs: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const r of refs) {
+    const key = (r.doi || r.title || "").toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (r.title && r.authors?.length) out.push(r);
+  }
+  return out;
+}
+async function buildRealReferences(theme: string): Promise<{ text: string; citations: { sobrenome: string; ano: string | number }[] }> {
+  const [oa, cr] = await Promise.all([fetchOpenAlex(theme, 12), fetchCrossRef(theme, 8)]);
+  const all = dedupeRefs([...oa, ...cr]).slice(0, 15);
+  if (all.length === 0) return { text: "", citations: [] };
+  const formatted = all.map(formatAbnt).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const citations = all.map((r) => {
+    const { sobrenome } = splitAuthor(r.authors[0] || "");
+    return { sobrenome: sobrenome.charAt(0) + sobrenome.slice(1).toLowerCase(), ano: r.year ?? "s.d." };
+  });
+  return { text: formatted.join("\n"), citations };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
