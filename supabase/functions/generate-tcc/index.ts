@@ -217,8 +217,18 @@ Inclua exatamente ${cfg.chapters} capítulos de desenvolvimento.` },
     const outline = JSON.parse(stripCodeFence(outlineRaw));
     await admin.from("tccs").update({ progress: 15 }).eq("id", tccId);
 
+    // 1.5 Fetch REAL references from OpenAlex + CrossRef
+    const realRefs = await buildRealReferences(tcc.theme);
+    const citationPool = realRefs.citations.length
+      ? realRefs.citations.map((c) => `(${c.sobrenome}, ${c.ano})`).join(", ")
+      : "";
+    const citationInstr = citationPool
+      ? `Use SOMENTE citações no formato (Sobrenome, Ano) escolhidas EXCLUSIVAMENTE desta lista de autores reais já presentes nas referências do trabalho: ${citationPool}. Não invente outros autores.`
+      : `Use citações no formato (Sobrenome, Ano) com autores plausíveis.`;
+    await admin.from("tccs").update({ progress: 20 }).eq("id", tccId);
+
     // 2. Generate sections in parallel
-    const sysAcad = `Você é um pesquisador acadêmico brasileiro. Escreva texto formal, em português do Brasil, seguindo normas ABNT. Use citações dentro do texto APENAS no formato curto (Sobrenome, Ano) — por exemplo: (Silva, 2023). NUNCA inclua, ao final da seção, blocos como "Referências", "Referências Bibliográficas", "Bibliografia" ou listas de obras completas — a lista de referências completa só aparecerá em uma seção dedicada do TCC. Não use markdown, apenas parágrafos separados por quebras duplas. Aproximadamente ${cfg.wordsPerSection} palavras.`;
+    const sysAcad = `Você é um pesquisador acadêmico brasileiro. Escreva texto formal, em português do Brasil, seguindo normas ABNT. ${citationInstr} NUNCA inclua, ao final da seção, blocos como "Referências", "Referências Bibliográficas", "Bibliografia" ou listas de obras completas — a lista de referências completa só aparecerá em uma seção dedicada do TCC. Não use markdown, apenas parágrafos separados por quebras duplas. Aproximadamente ${cfg.wordsPerSection} palavras.`;
 
     const taskList = [
       { key: "resumo", prompt: `Escreva o RESUMO (em português) de um TCC sobre "${tcc.theme}" (título "${tcc.title}"). Objetivo: ${outline.objetivo_geral}. Problema: ${outline.problema}. Estrutura: contexto, objetivo, metodologia, resultados esperados, conclusão. Texto único, parágrafo único, ~250 palavras. Sem markdown.` },
@@ -232,30 +242,6 @@ Inclua exatamente ${cfg.chapters} capítulos de desenvolvimento.` },
       })),
       { key: "resultados", prompt: `Escreva a seção RESULTADOS E DISCUSSÃO de um TCC sobre "${tcc.theme}". Apresente resultados plausíveis (com números, percentuais, exemplos), discuta-os à luz da literatura citada, com citações (SOBRENOME, ANO). Mencione a Tabela 1 com dados.` },
       { key: "conclusao", prompt: `Escreva as CONSIDERAÇÕES FINAIS de um TCC sobre "${tcc.theme}". Retome o objetivo (${outline.objetivo_geral}), sintetize os principais achados, aponte limitações e sugira pesquisas futuras. ~${Math.round(cfg.wordsPerSection * 0.6)} palavras.` },
-      { key: "referencias", prompt: `Liste 15 referências bibliográficas REAIS e VERIFICÁVEIS no formato ABNT (NBR 6023) sobre "${tcc.theme}".
-
-REGRAS OBRIGATÓRIAS — não invente nada:
-1. Use APENAS obras que você tem certeza de que existem (livros clássicos da área, autores reconhecidos, artigos amplamente citados, normas ABNT, dissertações/teses já publicadas, manuais oficiais).
-2. Priorize autores brasileiros consagrados da área e clássicos internacionais traduzidos.
-3. Inclua de forma equilibrada:
-   - Livros de metodologia científica reais (ex.: Antonio Carlos Gil — "Como Elaborar Projetos de Pesquisa", Atlas; Marina de Andrade Marconi e Eva Maria Lakatos — "Fundamentos de Metodologia Científica", Atlas; Pedro Demo; Minayo).
-   - Livros e artigos clássicos específicos do tema "${tcc.theme}" — apenas autores e títulos que você conhece de verdade.
-   - Quando incluir artigo de periódico, use revistas brasileiras reais (ex.: SciELO, Revista Brasileira de..., Cadernos de Saúde Pública, RAE, RAUSP, Educação & Sociedade) ou periódicos internacionais conhecidos.
-   - Quando incluir documento oficial, use órgãos reais (IBGE, MEC, Ministério da Saúde, OMS, ABNT — NBR 6023:2018, NBR 14724:2011, NBR 10520:2023).
-
-4. NÃO invente:
-   - títulos de livros que não existam,
-   - artigos com volume/número/páginas fictícios,
-   - DOIs ou URLs. NÃO inclua links/URLs/DOIs nas referências — deixe apenas a referência textual.
-   - editoras inexistentes ou cidades erradas para a editora.
-
-5. Se tiver dúvida sobre a existência exata de uma obra, prefira não incluí-la e use outra que você conheça com segurança.
-
-Formato exato (uma referência por linha, sem numeração, sem marcadores, sem markdown, ordenadas alfabeticamente pelo sobrenome):
-SOBRENOME, Nome. Título da obra. Edição. Cidade: Editora, Ano.
-SOBRENOME, Nome. Título do artigo. Nome da Revista, v. X, n. Y, p. ZZ-ZZ, Ano.
-
-Retorne SOMENTE as 15 linhas de referências.` },
     ];
 
     const results = await Promise.all(
@@ -268,6 +254,17 @@ Retorne SOMENTE as 15 linhas de referências.` },
       })
     );
     const sections = Object.fromEntries(results);
+
+    // Override referencias with real data when available
+    if (realRefs.text) {
+      sections.referencias = realRefs.text;
+    } else {
+      // Fallback: ask the AI as before
+      sections.referencias = await callAI([
+        { role: "system", content: sysAcad },
+        { role: "user", content: `Liste 15 referências reais em formato ABNT sobre "${tcc.theme}". Uma por linha, sem numeração, ordenadas alfabeticamente. Inclua apenas obras que você tem certeza de existir.` },
+      ]);
+    }
 
     await admin.from("tccs").update({ progress: 70 }).eq("id", tccId);
 
