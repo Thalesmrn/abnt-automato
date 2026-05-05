@@ -34,9 +34,21 @@ function stripImagePlaceholders(text: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
+// Remove blocos de "Referências" que a IA às vezes anexa ao final de cada seção.
+// As referências completas devem aparecer somente na seção final do TCC.
+function stripTrailingReferences(text: string): string {
+  if (!text) return "";
+  const headingRe = /(^|\n)\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(refer[êe]ncias(?:\s+bibliogr[áa]ficas)?|bibliografia|obras\s+consultadas)\s*:?\s*(?:\*\*)?\s*(?=\n|$)/i;
+  const m = text.match(headingRe);
+  if (m && typeof m.index === "number") {
+    return text.slice(0, m.index).trimEnd();
+  }
+  return text;
+}
+
 function paragraphs(text: string, indent = true): Content[] {
   if (!text) return [];
-  return stripImagePlaceholders(text)
+  return stripTrailingReferences(stripImagePlaceholders(text))
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean)
