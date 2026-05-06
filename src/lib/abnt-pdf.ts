@@ -205,7 +205,7 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
     ...paragraphs(c.sections?.conclusao || ""),
   ];
 
-  const urlRegex = /(https?:\/\/[^\s)]+)/g;
+  const urlRegex = /(https?:\/\/[^\s)]+[^\s).,;:!?])/g;
   const linkifyLine = (line: string): Content => {
     const parts: any[] = [];
     let last = 0;
