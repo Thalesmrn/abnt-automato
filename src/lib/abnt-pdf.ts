@@ -205,18 +205,33 @@ export async function generateAbntPdf(t: TccData): Promise<void> {
     ...paragraphs(c.sections?.conclusao || ""),
   ];
 
+  const urlRegex = /(https?:\/\/[^\s)]+)/g;
+  const linkifyLine = (line: string): Content => {
+    const parts: any[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    urlRegex.lastIndex = 0;
+    while ((m = urlRegex.exec(line)) !== null) {
+      if (m.index > last) parts.push({ text: line.slice(last, m.index) });
+      parts.push({ text: m[0], link: m[0], color: "#0645AD", decoration: "underline" });
+      last = m.index + m[0].length;
+    }
+    if (last < line.length) parts.push({ text: line.slice(last) });
+    return {
+      text: parts.length ? parts : line,
+      alignment: "justify",
+      margin: [0, 0, 0, 6] as [number, number, number, number],
+      lineHeight: 1.0,
+    };
+  };
+
   const referencias: Content[] = [
     unnumberedTitle("Referências"),
     ...((c.sections?.referencias || "")
       .split("\n")
       .map((l: string) => l.trim())
       .filter(Boolean)
-      .map((l: string) => ({
-        text: l,
-        alignment: "justify",
-        margin: [0, 0, 0, 6] as [number, number, number, number],
-        lineHeight: 1.0,
-      }))),
+      .map(linkifyLine)),
   ];
 
   const docDefinition: TDocumentDefinitions = {
